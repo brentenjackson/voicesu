@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ctext y=%2725%27 font-size=%2726%27%3E%F0%9F%97%A3%3C/text%3E%3C/svg%3E">
+<title>voicesu — live IPA vowel tracker</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main>
+  <section class="stage">
+    <header class="stage-head">
+      <h1>voicesu <span>· live IPA vowel tracker</span></h1>
+      <div class="vowel-readout">
+        <span class="dot" id="voiceDot"></span>
+        <span id="vowelBig">—</span>
+      </div>
+    </header>
+    <canvas id="chart"></canvas>
+  </section>
+
+  <aside class="panel">
+    <button id="toggle">Start microphone</button>
+    <p id="status" class="status">Idle. Chrome or Firefox over localhost.</p>
+
+    <div class="meter"><div id="level"></div></div>
+
+    <div class="stats">
+      <div><label>F1</label><b id="f1">—</b></div>
+      <div><label>F2</label><b id="f2">—</b></div>
+      <div><label>F0</label><b id="f0">—</b></div>
+      <div><label>Clarity</label><b id="clarity">—</b></div>
+    </div>
+
+    <h2>Spectrum</h2>
+    <canvas id="scope"></canvas>
+    <p class="hint">Grey = FFT · blue = LPC envelope · dashed = formant poles. 0–4.5&nbsp;kHz.</p>
+
+    <h2>Calibration</h2>
+    <p class="hint">Formants scale with vocal-tract length, so the chart needs your four corners. Hold each vowel steadily for ~2.5&nbsp;s.</p>
+    <div class="cal-row" id="calRow"></div>
+    <p id="calStatus" class="hint mono"></p>
+    <p id="calReadout" class="hint mono"></p>
+    <label class="field">Preset
+      <select id="preset">
+        <option value="">— apply a preset —</option>
+        <option value="male">Adult male</option>
+        <option value="female">Adult female</option>
+        <option value="child">Child</option>
+      </select>
+    </label>
+
+    <h2>Feel</h2>
+    <label class="field">Cursor easing <b id="easeVal"></b>
+      <input type="range" id="ease" min="0.05" max="1" step="0.01" value="0.22">
+    </label>
+    <label class="field">Formant smoothing <b id="smoothVal"></b>
+      <input type="range" id="smooth" min="0" max="0.9" step="0.01" value="0.35">
+    </label>
+    <label class="field">Voicing gate (RMS) <b id="gateVal"></b>
+      <input type="range" id="gate" min="0.001" max="0.04" step="0.001" value="0.008">
+    </label>
+  </aside>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

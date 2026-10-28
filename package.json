@@ -1,0 +1,12 @@
+{
+  "name": "voicesu",
+  "version": "0.1.0",
+  "description": "Real-time IPA vowel tracker in the browser",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "python3 serve.py",
+    "test": "node test/dsp.test.js && node test/mapping.test.js",
+    "test:e2e": "test/e2e.sh"
+  }
+}
