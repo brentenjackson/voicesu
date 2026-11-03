@@ -48,6 +48,8 @@ h1 span { color: var(--muted); font-weight: 400; }
   font: 600 34px/1 "Charis SIL", "Doulos SIL", "Gentium Plus", "DejaVu Sans", serif;
   color: var(--accent);
   min-height: 40px;
+  flex: none;           /* on narrow screens the title wraps, not the vowel */
+  white-space: nowrap;
 }
 
 .dot {
@@ -56,6 +58,36 @@ h1 span { color: var(--muted); font-weight: 400; }
   transition: background 0.12s, box-shadow 0.12s;
 }
 .dot.on { background: var(--accent2); box-shadow: 0 0 12px var(--accent2); }
+
+/* Which engine the big readout follows; colored to match its cursor. */
+.vowel-src {
+  align-self: flex-end;
+  font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0 24px;
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend li { display: flex; align-items: center; gap: 6px; }
+
+/* A ring with a white center: the cursor it names, in miniature. */
+.swatch {
+  flex: none;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  border: 2.5px solid var(--c);
+  background: radial-gradient(circle, #fff 0 22%, transparent 27%);
+}
 
 #chart { flex: 1; width: 100%; min-height: 0; display: block; }
 
@@ -123,6 +155,30 @@ button.ghost:hover { border-color: var(--accent2); }
 .stats label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
 .stats b { font: 600 15px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+.engines { display: grid; gap: 6px; }
+.engine-head, .engine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px 68px;
+  gap: 0 8px;
+  align-items: center;
+}
+.engine-head {
+  padding: 0 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.engine-head span, .engine b { text-align: right; }
+.engine { background: #1a1f30; border-radius: 7px; padding: 7px 10px; }
+.engine-name { display: flex; align-items: center; gap: 7px; font-weight: 600; cursor: pointer; min-width: 0; }
+.engine-name input { margin: 0; accent-color: var(--c); }
+.engine-name:has(input:disabled) { cursor: default; color: var(--muted); }
+.engine b { font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.engine.off b { color: var(--muted); }
+.engine-note { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.engine-note:empty { display: none; }
+
 #scope {
   width: 100%;
   height: 110px;
@@ -143,6 +199,14 @@ button.ghost:hover { border-color: var(--accent2); }
   flex: none;
 }
 
+.cal-table { border-collapse: collapse; width: 100%; }
+.cal-table th, .cal-table td { padding: 1px 0; text-align: right; font-weight: 400; }
+.cal-table th:first-child { text-align: left; font-weight: 600; }
+.cal-table thead th {
+  font: 600 14px/1.3 "Charis SIL", "Doulos SIL", "Gentium Plus", "DejaVu Sans", serif;
+  color: var(--accent2);
+}
+
 .field {
   display: block;
   font-size: 11px;
@@ -153,6 +217,7 @@ button.ghost:hover { border-color: var(--accent2); }
 }
 .field b { color: var(--accent2); font-family: ui-monospace, monospace; }
 .field select, .field input[type="range"] { width: 100%; margin-top: 6px; }
+.field select:disabled { color: var(--muted); }
 .field select {
   background: #1a1f30; color: var(--text);
   border: 1px solid var(--line); border-radius: 6px; padding: 7px;

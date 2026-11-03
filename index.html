@@ -15,8 +15,10 @@
       <div class="vowel-readout">
         <span class="dot" id="voiceDot"></span>
         <span id="vowelBig">—</span>
+        <span id="vowelSrc" class="vowel-src" title="Engine the nearest-vowel readout follows"></span>
       </div>
     </header>
+    <ul id="legend" class="legend" aria-label="Cursors on the chart"></ul>
     <canvas id="chart"></canvas>
   </section>
 
@@ -27,22 +29,28 @@
     <div class="meter"><div id="level"></div></div>
 
     <div class="stats">
-      <div><label>F1</label><b id="f1">—</b></div>
-      <div><label>F2</label><b id="f2">—</b></div>
       <div><label>F0</label><b id="f0">—</b></div>
       <div><label>Clarity</label><b id="clarity">—</b></div>
     </div>
+
+    <h2>Engines</h2>
+    <div class="engines" id="engines">
+      <div class="engine-head"><span></span><span>F1</span><span>F2</span></div>
+    </div>
+    <label class="field">Nearest vowel follows
+      <select id="primary"></select>
+    </label>
 
     <h2>Spectrum</h2>
     <canvas id="scope"></canvas>
     <p class="hint">Grey = FFT · blue = LPC envelope · dashed = formant poles. 0–4.5&nbsp;kHz.</p>
 
     <h2>Calibration</h2>
-    <p class="hint">Formants scale with vocal-tract length, so the chart needs your four corners. Hold each vowel steadily for ~2.5&nbsp;s.</p>
+    <p class="hint">Formants scale with vocal-tract length, so the chart needs your four corners. Hold each vowel steadily for ~2.5&nbsp;s; every engine that's on records its own.</p>
     <div class="cal-row" id="calRow"></div>
     <p id="calStatus" class="hint mono"></p>
-    <p id="calReadout" class="hint mono"></p>
-    <label class="field">Preset
+    <table id="calReadout" class="cal-table hint mono"></table>
+    <label class="field">Preset, for every engine
       <select id="preset">
         <option value="">— apply a preset —</option>
         <option value="male">Adult male</option>
@@ -61,6 +69,17 @@
     <label class="field">Voicing gate (RMS) <b id="gateVal"></b>
       <input type="range" id="gate" min="0.001" max="0.04" step="0.001" value="0.008">
     </label>
+
+    <h2>Pilot</h2>
+    <p class="hint">For the classmate pilot. Logs each engine's F1/F2 and the pitch per frame, never audio; you save the file yourself at the end.</p>
+    <label class="field">Participant number
+      <input type="text" id="pilotId" inputmode="numeric" placeholder="e.g. 3">
+    </label>
+    <div class="cal-row">
+      <button class="ghost" id="pilotRun">Run pilot task</button>
+      <button class="ghost" id="pilotSave" disabled>Save log</button>
+    </div>
+    <p id="pilotStatus" class="hint mono"></p>
   </aside>
 </main>
 <script type="module" src="js/main.js"></script>

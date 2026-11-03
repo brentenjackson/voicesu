@@ -1,0 +1,27 @@
+{
+  "layer": 0,
+  "contextMs": 400,
+  "sampleRate": 16000,
+  "leadMs": 23.219954648526077,
+  "outputs": [
+    "F1",
+    "F2"
+  ],
+  "units": "bark",
+  "w2v2_probe.onnx": {
+    "bytes": 37305604,
+    "max_abs_diff_bark": [
+      0.001,
+      0.001
+    ],
+    "cpu_ms_per_window": 9.7
+  },
+  "w2v2_probe.int8.onnx": {
+    "bytes": 36132869,
+    "max_abs_diff_bark": [
+      0.044,
+      0.081
+    ],
+    "cpu_ms_per_window": 9.9
+  }
+}

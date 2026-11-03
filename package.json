@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "python3 serve.py",
-    "test": "node test/dsp.test.js && node test/mapping.test.js",
+    "test": "node test/dsp.test.js && node test/mapping.test.js && node test/pipeline.test.js && node test/calibration.test.js",
     "test:e2e": "test/e2e.sh"
   }
 }

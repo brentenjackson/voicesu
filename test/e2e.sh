@@ -16,7 +16,8 @@ if [ -z "$CHROME" ]; then
 fi
 
 cleanup() {
-  [ -n "${CHROME_PID:-}" ] && kill "$CHROME_PID" 2>/dev/null || true
+  # Wait for Chrome to exit, or it is still writing its profile as we delete it.
+  [ -n "${CHROME_PID:-}" ] && kill "$CHROME_PID" 2>/dev/null && wait "$CHROME_PID" 2>/dev/null || true
   [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>wav2vec 2.0 engine benchmark</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<script type="module">
+// Load the exported probe in the engine's worker and time inference on 400 ms
+// windows of a synthetic vowel. Results land in window.__bench for the CDP driver.
+const params = new URLSearchParams(location.search);
+const model = params.get('model') ?? '../models/w2v2_probe.int8.onnx';
+const runs = Number(params.get('runs') ?? 30);
+
+const worker = new Worker(new URL('../js/engines/w2v2-worker.js', import.meta.url));
+const call = (msg) => new Promise((resolve) => {
+  worker.onmessage = (e) => resolve(e.data);
+  worker.postMessage(msg);
+});
+
+const sr = 16000, n = 6400;
+const wave = new Float32Array(n);
+for (let i = 0; i < n; i++) {
+  const t = i / sr;
+  wave[i] = Math.sin(2 * Math.PI * 220 * t) * (0.6 + 0.4 * Math.sin(2 * Math.PI * 730 * t));
+}
+
+const ready = await call({ type: 'init', modelUrl: new URL(model, location.href).href });
+if (ready.type !== 'ready') {
+  window.__bench = { error: ready.message };
+} else {
+  const times = [];
+  let bark = null;
+  for (let r = 0; r < runs; r++) {
+    const res = await call({ type: 'run', id: r, wave, endTime: 0 });
+    if (res.type !== 'result') { window.__bench = { error: res.message }; break; }
+    if (r > 0) times.push(res.inferMs);  // the first run includes warm-up
+    bark = res.bark;
+  }
+  times.sort((a, b) => a - b);
+  window.__bench = window.__bench ?? {
+    model, loadMs: ready.loadMs, threads: ready.threads, runs: times.length,
+    medianMs: times[Math.floor(times.length / 2)], p90Ms: times[Math.floor(times.length * 0.9)],
+    bark, crossOriginIsolated: self.crossOriginIsolated,
+  };
+}
+document.getElementById('out').textContent = JSON.stringify(window.__bench, null, 2);
+</script>
+</body>
+</html>

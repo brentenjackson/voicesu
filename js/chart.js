@@ -1,4 +1,4 @@
-// Canvas rendering of the IPA quadrilateral + the osu-style cursor.
+// Canvas rendering of the IPA quadrilateral + one osu-style cursor per engine.
 
 import { VOWELS, ROWS, COLS, quadX } from './vowels.js';
 
@@ -8,16 +8,14 @@ const COLORS = {
   label: 'rgba(190, 200, 230, 0.55)',
   symbol: 'rgba(228, 234, 255, 0.82)',
   symbolHot: '#ffd76a',
-  cursor: '#ff5fa2',
-  cursorGlow: 'rgba(255, 95, 162, 0.35)',
-  trail: '90, 220, 255',
+  tagHalo: 'rgba(11, 13, 22, 0.85)', // page background, so tags read over grid lines
 };
 
 export class ChartRenderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.trail = [];
+    this.trails = new Map(); // cursor key -> recent positions
     this.maxTrail = 45;
     this.resize();
   }
@@ -51,14 +49,25 @@ export class ChartRenderer {
     };
   }
 
-  pushTrail(backness, height) {
-    this.trail.push({ b: backness, h: height, t: performance.now() });
-    if (this.trail.length > this.maxTrail) this.trail.shift();
+  pushTrail(key, backness, height) {
+    let trail = this.trails.get(key);
+    if (!trail) this.trails.set(key, (trail = []));
+    trail.push({ b: backness, h: height, t: performance.now() });
+    if (trail.length > this.maxTrail) trail.shift();
   }
 
-  clearTrail() { this.trail.length = 0; }
+  /** One cursor's trail, or every trail when no key is given. */
+  clearTrail(key) {
+    if (key === undefined) this.trails.clear();
+    else this.trails.delete(key);
+  }
 
-  draw(cursor, activeVowel) {
+  /**
+   * @param cursors  [{ key, label, color, slot, backness, height, strength }],
+   *                 painted in order, so put the one that matters most last
+   * @param activeVowel  chart node to highlight, or null
+   */
+  draw(cursors, activeVowel) {
     const c = this.ctx;
     c.clearRect(0, 0, this.w, this.h);
 
@@ -66,8 +75,14 @@ export class ChartRenderer {
     this.punchSymbolHoles(); // knocks holes in the lines only
     this.drawGridLabels();
     this.drawSymbols(activeVowel);
-    this.drawTrail();
-    if (cursor) this.drawCursor(cursor.backness, cursor.height, cursor.strength);
+
+    // Each cursor keeps its own trail; with several on screen they fade back
+    // so the chart doesn't turn to soup.
+    const fade = 1 / Math.sqrt(Math.max(1, cursors.length));
+    for (const cur of cursors) this.drawTrail(this.trails.get(cur.key), cur.color, fade);
+    for (const cur of cursors) this.drawCursor(cur.backness, cur.height, cur.strength, cur.color);
+    // With more than one on screen, name them: identity is never color-only.
+    if (cursors.length > 1) for (const cur of cursors) this.drawTag(cur);
   }
 
   drawGridLines() {
@@ -176,35 +191,38 @@ export class ChartRenderer {
     }
   }
 
-  drawTrail() {
+  drawTrail(trail, color, fade = 1) {
+    if (!trail) return;
     const c = this.ctx;
     const now = performance.now();
-    for (let i = 0; i < this.trail.length; i++) {
-      const t = this.trail[i];
+    for (let i = 0; i < trail.length; i++) {
+      const t = trail[i];
       const age = (now - t.t) / 700;
       if (age > 1) continue;
       const p = this.toPx(t.b, t.h);
-      const alpha = (1 - age) * 0.5 * (i / this.trail.length);
+      const alpha = (1 - age) * 0.5 * fade * (i / trail.length);
       c.beginPath();
       c.arc(p.x, p.y, 3 + (1 - age) * 6, 0, Math.PI * 2);
-      c.fillStyle = `rgba(${COLORS.trail}, ${alpha})`;
+      c.fillStyle = rgba(color, alpha);
       c.fill();
     }
   }
 
-  drawCursor(backness, height, strength) {
+  cursorRadius(strength) { return 11 + strength * 7; }
+
+  drawCursor(backness, height, strength, color) {
     const c = this.ctx;
     const p = this.toPx(backness, height);
-    const r = 11 + strength * 7;
+    const r = this.cursorRadius(strength);
 
     const g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2);
-    g.addColorStop(0, COLORS.cursorGlow);
-    g.addColorStop(1, 'rgba(255, 95, 162, 0)');
+    g.addColorStop(0, rgba(color, 0.35));
+    g.addColorStop(1, rgba(color, 0));
     c.fillStyle = g;
     c.beginPath(); c.arc(p.x, p.y, r * 3.2, 0, Math.PI * 2); c.fill();
 
     c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI * 2);
-    c.strokeStyle = COLORS.cursor;
+    c.strokeStyle = color;
     c.lineWidth = 3;
     c.stroke();
 
@@ -212,6 +230,35 @@ export class ChartRenderer {
     c.fillStyle = '#fff';
     c.fill();
   }
+
+  /**
+   * Engine name beside its cursor. Each engine has a fixed corner (its slot),
+   * so tags of cursors sitting on top of each other don't collide.
+   */
+  drawTag({ backness, height, strength, color, label, slot = 0 }) {
+    const c = this.ctx;
+    const p = this.toPx(backness, height);
+    const ang = -Math.PI / 4 + (slot % 4) * (Math.PI / 2); // NE, SE, SW, NW
+    const d = this.cursorRadius(strength) + 4;
+    const x = p.x + Math.cos(ang) * d;
+    const y = p.y + Math.sin(ang) * d;
+
+    c.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+    c.textAlign = Math.cos(ang) >= 0 ? 'left' : 'right';
+    c.textBaseline = Math.sin(ang) < 0 ? 'bottom' : 'top';
+    c.lineJoin = 'round';
+    c.lineWidth = 3;
+    c.strokeStyle = COLORS.tagHalo;
+    c.strokeText(label, x, y);
+    c.fillStyle = color;
+    c.fillText(label, x, y);
+  }
+}
+
+/** '#rrggbb' + alpha -> CSS rgba(). */
+function rgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 /** Small spectrum + LPC-envelope scope. Mostly a debugging aid, but a fun one. */
