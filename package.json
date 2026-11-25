@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "python3 serve.py",
-    "test": "node test/dsp.test.js && node test/mapping.test.js && node test/pipeline.test.js && node test/calibration.test.js",
+    "test": "node test/dsp.test.js && node test/mapping.test.js && node test/pipeline.test.js && node test/calibration.test.js && node test/wasm.test.js",
+    "build:wasm": "cargo build --release --target wasm32-unknown-unknown --manifest-path wasm/Cargo.toml && cp wasm/target/wasm32-unknown-unknown/release/voicesu_formants.wasm wasm/formants.wasm",
     "test:e2e": "test/e2e.sh"
   }
 }
