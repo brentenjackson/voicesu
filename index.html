@@ -40,6 +40,14 @@
     <label class="field">Nearest vowel follows
       <select id="primary"></select>
     </label>
+    <label class="field">Processing
+      <select id="backend">
+        <option value="js">JavaScript</option>
+        <option value="wasm">WebAssembly</option>
+      </select>
+    </label>
+    <p class="hint mono">Analysis per frame: <span id="analysisMs">—</span></p>
+    <p id="backendNote" class="hint"></p>
 
     <h2>Spectrum</h2>
     <canvas id="scope"></canvas>

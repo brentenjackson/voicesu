@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>voicesu back-end benchmark</title>
+</head>
+<body>
+<pre id="out">running… (about a minute)</pre>
+<script type="module">
+// The benchmark runs in a module Worker, like the demo's analysis; the CDP
+// driver (test/bench-backends.sh) reads window.__bench when it's done.
+const worker = new Worker(new URL('./bench-worker.js', import.meta.url), { type: 'module' });
+worker.onmessage = (e) => {
+  window.__bench = e.data;
+  document.getElementById('out').textContent =
+    `${e.data.markdown}\n\nModule compile ${e.data.compileMs.toFixed(2)} ms, instantiate ${e.data.instMs.toFixed(2)} ms\n${e.data.userAgent}`;
+};
+worker.onerror = (e) => { window.__bench = { error: e.message }; };
+</script>
+</body>
+</html>

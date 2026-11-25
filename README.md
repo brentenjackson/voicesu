@@ -68,6 +68,15 @@ Click **Start microphone**, then calibrate (see below).
    built inside the worker from the loaded weights; engines with their own
    audio stay on the main thread, the only place the `MediaStream` exists, and
    get `start(stream)` when the mic starts.
+
+   **Processing back end.** The per-frame work (the voicing gate's pitch
+   detector, LPC, root finding) runs either as plain JavaScript or as
+   WebAssembly, picked under Engines → Processing and switchable while
+   listening. The WebAssembly build (`wasm/src/lib.rs`, Rust) is a
+   line-for-line port of `js/dsp.js`: no allocation, no bindings, 32 KB. Both
+   give the same formants to within 1e-11 Hz, so everything measured on one
+   holds for the other. The panel shows the analysis time per frame for
+   whichever is running.
 5. **Mapping** — F1 and F2 go to the Bark scale, then:
    - **height** (close↔open) from `Bark(F1)`
    - **backness** (front↔back) from `Bark(F2) − Bark(F1)`
@@ -141,7 +150,15 @@ engine.
 npm test           # DSP + mapping, no browser needed
 npm run test:e2e   # drives the real page in headless Chrome
 test/w2v2-bench.sh # times the wav2vec 2.0 graph in headless Chrome
+node test/bench-backends.mjs   # JavaScript vs WebAssembly per frame, in Node
+test/bench-backends.sh         # the same, in a headless Chrome worker
+npm run build:wasm # rebuild wasm/formants.wasm (needs Rust and the wasm32 target)
 ```
+
+The built module is committed, so only changing `wasm/src/lib.rs` needs Rust:
+`rustup target add wasm32-unknown-unknown`, then `npm run build:wasm`.
+`test/wasm.test.js` (part of `npm test`) checks the two back ends agree frame
+by frame.
 
 `npm test` synthesizes vowels through a source-filter model (impulse train →
 glottal shaping → resonators → lip radiation) and asserts the tracker recovers
@@ -180,6 +197,8 @@ cleanly if no Chrome is installed.
 | `js/chart.js` | Canvas rendering: quadrilateral, a cursor and trail per engine, spectrum |
 | `js/main.js` | UI wiring: engine toggles and readouts, calibration flow, pilot mode, animation loop |
 | `js/engines/w2v2*.js` | wav2vec 2.0 engine: its 16 kHz capture worklet and the onnxruntime-web worker |
+| `js/engines/wasm.js` | WebAssembly back end: loads `wasm/formants.wasm`, and an LPC engine that runs on it |
+| `wasm/` | Rust source of the per-frame pipeline, and the built `formants.wasm` |
 | `js/pilot.js` | Pilot mode: logs per-frame engine F1/F2 and pitch (never audio) for the classmate study |
 | `models/` | Exported by the research code: `mfcc_readout.json`, `w2v2_probe.json`, `w2v2_probe.onnx` (not in git) |
 | `test/` | Unit tests, plus the CDP browser harness and its fixtures |

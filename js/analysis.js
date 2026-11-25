@@ -7,9 +7,15 @@
 import { measureVoicing } from './engines/lpc.js';
 
 export class Analyzer {
-  /** @param {number} sr  analysis sample rate of the frames passed in */
-  constructor(sr) {
+  /**
+   * @param {number} sr  analysis sample rate of the frames passed in
+   * @param {object} dsp  optional processing back end (WasmDsp); its
+   *                      measureVoicing replaces the JavaScript one
+   */
+  constructor(sr, dsp = null) {
     this.sr = sr;
+    this.dsp = dsp;
+    this.measureVoicing = dsp ? dsp.measureVoicing : measureVoicing;
     this.gate = { rms: 0.008, clarity: 0.5 };
     this.smoothing = null; // null = leave each engine's own default
     this.engines = new Map(); // name -> { spec, engine }
@@ -42,7 +48,7 @@ export class Analyzer {
 
   /** Voicing once, then every enabled engine on the same frame. */
   analyze(frame) {
-    const voicing = measureVoicing(frame, this.sr, this.gate);
+    const voicing = this.measureVoicing(frame, this.sr, this.gate);
     return { voicing, results: this.run(frame, voicing) };
   }
 

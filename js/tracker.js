@@ -12,8 +12,12 @@
 //
 // Engines with their own audio (`ownAudio` in the registry) always live on
 // this thread: start(stream) needs the MediaStream, which a worker can't hold.
+//
+// Either path runs the per-frame pipeline (voicing and LPC) on one of two back
+// ends: plain JavaScript, or the WebAssembly build in wasm/ (`backend`).
 
 import { defaultLpcOrder } from './engines/lpc.js';
+import { WasmDsp } from './engines/wasm.js';
 import { Analyzer } from './analysis.js';
 import {
   FRAME, TARGET_SR, HOP_SECONDS, HIGHPASS_HZ, analysisRate, lowpassHz,
@@ -45,13 +49,27 @@ export class VowelTracker {
     this.local = null;    // Analyzer on this thread
     this.own = new Map(); // ownAudio engines started (or starting), by name
 
+    this.backend = 'js';  // wanted: 'js' or 'wasm'
+    this.dspModule = null; // compiled WebAssembly module, for 'wasm'
+    this.times = [];      // recent per-frame analysis times, ms
+
     this.state = emptyState();
     this.onFrame = null;        // (state) after every analysis frame
     this.onEngineStatus = null; // (name, 'loading' | 'ready' | 'error', detail)
+    this.onBackend = null;      // (backend actually running, note) after start or a switch
   }
 
-  /** Any of { enabled: [names], gate: { rms }, smoothing }. Fine before start(). */
-  configure({ enabled, gate, smoothing } = {}) {
+  /**
+   * Any of { enabled: [names], gate: { rms }, smoothing, backend: 'js' | 'wasm' }.
+   * Fine before start(); a backend change while running rebuilds the engines.
+   */
+  configure({ enabled, gate, smoothing, backend } = {}) {
+    if (backend && backend !== this.backend) {
+      this.backend = backend;
+      this.times = [];
+      if (this.running && this.worker) this.worker.postMessage({ type: 'configure', backend });
+      else if (this.running) this.rebuildLocal();
+    }
     if (gate) Object.assign(this.gate, gate);
     if (smoothing !== undefined) this.smoothing = smoothing;
     if (enabled) {
@@ -119,6 +137,7 @@ export class VowelTracker {
 
     this.local = new Analyzer(this.effSr);
     this.local.configure({ gate: this.gate, smoothing: this.smoothing, enabled: [...this.enabled] });
+    this.times = [];
 
     const sync = entries.filter((e) => !e.spec.ownAudio);
     try {
@@ -129,17 +148,45 @@ export class VowelTracker {
       this.worker = null;
       this.mode = 'main thread';
       this.fallbackReason = err.message;
-      for (const { spec, assets } of sync) {
-        try {
-          this.local.add(spec, spec.create(this.effSr, assets));
-        } catch (e) {
-          this.onEngineStatus?.(spec.name, 'error', e.message);
-        }
-      }
+      await this.rebuildLocal();
     }
 
     this.running = true;
     this.syncOwnAudio();
+  }
+
+  /**
+   * Fallback path: (re)build this thread's Analyzer and the synchronous
+   * engines on the wanted back end, keeping any ownAudio engines running.
+   */
+  async rebuildLocal() {
+    let dsp = null;
+    let note = '';
+    if (this.backend === 'wasm') {
+      try {
+        dsp = await WasmDsp.create(this.dspModule);
+      } catch (err) {
+        note = `WebAssembly unavailable (${err.message}); using JavaScript`;
+      }
+    }
+    const prev = this.local;
+    const next = new Analyzer(this.effSr, dsp);
+    next.configure({ gate: this.gate, smoothing: this.smoothing, enabled: [...this.enabled] });
+    for (const { spec, assets } of this.entries) {
+      if (spec.ownAudio) {
+        const own = prev?.engines.get(spec.name);
+        if (own) next.add(own.spec, own.engine);
+        continue;
+      }
+      try {
+        next.add(spec, spec.create(this.effSr, assets, dsp));
+      } catch (e) {
+        this.onEngineStatus?.(spec.name, 'error', e.message);
+      }
+    }
+    this.local = next;
+    this.state.backend = dsp ? 'wasm' : 'js';
+    this.onBackend?.(this.state.backend, note);
   }
 
   /** Worklet + worker. Throws, leaving nothing connected, if either is missing. */
@@ -173,14 +220,14 @@ export class VowelTracker {
       smoothing: this.smoothing,
       sendFrames: this.wantsFrames(),
       port: channel.port2,
+      backend: this.backend,
+      dspModule: this.dspModule,
     }, [channel.port2]);
 
-    const { errors } = await ready;
+    const { errors, backend } = await ready;
     worker.onmessage = (e) => this.receive(e.data);
     worker.onerror = null;
-    for (const [name, message] of Object.entries(errors)) {
-      this.onEngineStatus?.(name, 'error', message);
-    }
+    this.reportBackend(backend, errors);
 
     const node = new AudioWorkletNode(this.ctx, 'voicesu-capture', {
       numberOfInputs: 1,
@@ -221,18 +268,44 @@ export class VowelTracker {
     // Decimate from the tail of the buffer (most recent samples).
     const start = this.raw.length - FRAME * this.decim;
     for (let i = 0; i < FRAME; i++) this.frame[i] = this.raw[start + i * this.decim];
+    const t0 = performance.now();
     const { voicing, results } = this.local.analyze(this.frame);
+    this.time(performance.now() - t0);
     this.ingest(voicing, results);
     return this.state;
   }
 
   /** A message from the worker. */
   receive(msg) {
-    if (msg.type !== 'frame' || !this.running) return;
+    if (!this.running) return;
+    if (msg.type === 'backend') {
+      this.times = [];
+      this.reportBackend(msg.backend, msg.errors);
+      return;
+    }
+    if (msg.type !== 'frame') return;
     const { voicing, results } = msg;
     // ownAudio engines see the same frame and voicing the worker's engines did.
     if (msg.frame) Object.assign(results, this.local.run(msg.frame, voicing));
+    if (msg.backend === this.state.backend) this.time(msg.ms);
     this.ingest(voicing, results);
+  }
+
+  /** The back end the worker actually runs, and any engine that failed to build on it. */
+  reportBackend(backend, errors = {}) {
+    this.state.backend = backend;
+    const { backend: note = '', ...engineErrors } = errors;
+    for (const [name, message] of Object.entries(engineErrors)) {
+      this.onEngineStatus?.(name, 'error', message);
+    }
+    this.onBackend?.(backend, note);
+  }
+
+  /** Mean analysis time over the last 120 frames (about 2 s), for the readout. */
+  time(ms) {
+    this.times.push(ms);
+    if (this.times.length > 120) this.times.shift();
+    this.state.analysisMs = this.times.reduce((a, b) => a + b, 0) / this.times.length;
   }
 
   /** Fold one analysis frame into `state`, whichever path produced it. */
@@ -313,6 +386,8 @@ function emptyState() {
     envelope: null,         // LPC's, for the spectrum scope
     formants: [],
     spectrum: null,
+    backend: 'js',          // the back end the analysis actually runs on
+    analysisMs: 0,          // mean time to analyze one frame, recent frames
   };
 }
 
