@@ -155,6 +155,7 @@ console.log('\nWorker protocol:');
     enabled: ['lpc', 'mfcc'], gate: { rms: 0.008, clarity: 0.5 }, smoothing: 0.35,
     sendFrames: false, port,
   } });
+  await new Promise((r) => setTimeout(r, 0)); // init is async: it may instantiate WebAssembly
   const ready = posted.shift();
   check(ready.type === 'ready' && Object.keys(ready.errors).join() === 'bogus',
     'ready, reporting the one engine it could not build');
@@ -178,6 +179,29 @@ console.log('\nWorker protocol:');
   const after = posted.at(-1);
   check(after.frame?.length === FRAME && !('mfcc' in after.results),
     'configure: toggles apply, and the frame is sent once an ownAudio engine needs it');
+
+  // The same worker on the WebAssembly back end, then switched back live.
+  const { compileDsp } = await import('../js/engines/wasm.js');
+  posted.length = 0;
+  const port2 = {};
+  self.onmessage({ data: {
+    type: 'init', sr: 11025, decim: 1, engines: [{ name: 'lpc' }], enabled: ['lpc'],
+    gate: { rms: 0.008, clarity: 0.5 }, smoothing: 0.35, sendFrames: false, port: port2,
+    backend: 'wasm', dspModule: await compileDsp(),
+  } });
+  await new Promise((r) => setTimeout(r, 20));
+  check(posted.shift()?.backend === 'wasm', 'init on WebAssembly: ready reports the wasm back end');
+  for (let i = 0; i < fed; i += 128) port2.onmessage({ data: vowel.subarray(i, i + 128) });
+  const wasmLast = posted.filter((m) => m.type === 'frame').at(-1);
+  check(wasmLast.backend === 'wasm' && wasmLast.ms >= 0 && Math.abs(wasmLast.results.lpc.f1 - last.results.lpc.f1) < 1e-6
+    && Math.abs(wasmLast.results.lpc.f2 - last.results.lpc.f2) < 1e-6,
+    `LPC [i] on WebAssembly matches JavaScript: F1 ${wasmLast.results.lpc.f1.toFixed(0)}, F2 ${wasmLast.results.lpc.f2.toFixed(0)}`);
+  posted.length = 0;
+  self.onmessage({ data: { type: 'configure', backend: 'js' } });
+  await new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 1024; i += 128) port2.onmessage({ data: vowel.subarray(i, i + 128) });
+  check(posted[0]?.type === 'backend' && posted[0].backend === 'js' && posted.at(-1).backend === 'js',
+    'configure { backend }: switches live and says so');
 }
 
 // 7. ownAudio engines -- how wav2vec 2.0 plugs in -- with a stand-in engine.

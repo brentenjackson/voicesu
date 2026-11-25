@@ -439,6 +439,31 @@ if (!HAS_PROBE) {
   checkErrors();
 }
 
+// ------------------------------------------------------------ 6. WebAssembly back end
+
+console.log('\nRun 6: per-frame pipeline on the WebAssembly back end, then switched live\n');
+await load();
+await setSelect('backend', 'wasm');
+console.log('Microphone:');
+await startMic(/in a worker/);
+await waitFor(`/WebAssembly/.test(document.getElementById('analysisMs').textContent)`);
+const wasmReadout = await evaluate(`document.getElementById('analysisMs').textContent`);
+check(/WebAssembly/.test(wasmReadout), `analysis readout names the back end: ${wasmReadout}`);
+const run6 = await sample(30, 300);
+console.log('\nTracking (WebAssembly in the worker):');
+checkTracking(run6);
+
+await setSelect('backend', 'js');
+await waitFor(`/JavaScript/.test(document.getElementById('analysisMs').textContent)`);
+await sleep(2500); // a fresh two-second window on the new back end
+const jsReadout = await evaluate(`document.getElementById('analysisMs').textContent`);
+check(/JavaScript/.test(jsReadout), `switched live to JavaScript: ${jsReadout}`);
+const afterSwitch = (await sample(10, 300)).filter((s) => s.voiced && s.lpc.f1 > 0);
+check(afterSwitch.length >= 8, `still tracking after the switch (${afterSwitch.length}/10 voiced samples)`);
+
+console.log('\nErrors:');
+checkErrors();
+
 console.log(failures ? `\n${failures} failure(s)` : '\nall passed');
 ws.close();
 process.exit(failures ? 1 : 0);

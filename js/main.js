@@ -4,6 +4,7 @@ import { VowelTracker } from './tracker.js';
 import { ChartRenderer, ScopeRenderer } from './chart.js';
 import { PRESETS, CORNERS, buildCalibration, formantsToChart, nearestVowel } from './vowels.js';
 import { ENGINES, loadEngines } from './engines/registry.js';
+import { compileDsp } from './engines/wasm.js';
 import { ENGINE_COLORS } from './engines/index.js';
 import { loadCalibration, saveCalibration, CornerCapture } from './calibration.js';
 import { PilotLogger, PILOT_TASK } from './pilot.js';
@@ -49,6 +50,33 @@ function primaryEngine() {
 function newCursor() { return { backness: 0.5, height: 0.5, strength: 0 }; }
 
 // ---------------------------------------------------------------- engines
+
+// ---------------------------------------------------------------- processing back end
+
+const BACKEND_KEY = 'voicesu.backend';
+const BACKEND_LABELS = { js: 'JavaScript', wasm: 'WebAssembly' };
+
+// Compiled once here; the analysis worker instantiates its own copy.
+const dspLoaded = compileDsp().then((module) => {
+  tracker.dspModule = module;
+}).catch((err) => {
+  $('backend').querySelector('option[value="wasm"]').disabled = true;
+  $('backendNote').textContent = `WebAssembly unavailable: ${err.message}`;
+  if (tracker.backend === 'wasm') setBackend('js');
+});
+
+function setBackend(backend) {
+  $('backend').value = backend;
+  try { localStorage.setItem(BACKEND_KEY, backend); } catch { /* private mode */ }
+  tracker.configure({ backend });
+}
+
+tracker.onBackend = (backend, note) => {
+  $('backend').value = backend;
+  $('backendNote').textContent = note;
+};
+
+$('backend').addEventListener('change', (e) => setBackend(e.target.value));
 
 const enginesLoaded = loadEngines(ENGINES).then((loaded) => {
   for (const { spec, assets, available, note } of loaded) {
@@ -261,6 +289,9 @@ function updateReadouts(state, active) {
   }
   $('f0').textContent = state.voiced && state.f0 ? `${Math.round(state.f0)} Hz` : '—';
   $('clarity').textContent = state.clarity ? state.clarity.toFixed(2) : '—';
+  $('analysisMs').textContent = running && state.analysisMs
+    ? `${state.analysisMs.toFixed(3)} ms (${BACKEND_LABELS[state.backend]})`
+    : '—';
   $('level').style.width = `${Math.min(100, (state.rms / 0.12) * 100)}%`;
   $('voiceDot').classList.toggle('on', !!state.voiced);
 }
@@ -293,7 +324,7 @@ $('toggle').addEventListener('click', async () => {
   }
   try {
     setStatus('Requesting microphone…');
-    await enginesLoaded;
+    await Promise.all([enginesLoaded, dspLoaded]);
     tracker.configure({ enabled: activeNames() });
     await tracker.start(engines.filter((e) => e.available).map(({ spec, assets }) => ({ spec, assets })));
     running = true;
@@ -357,4 +388,8 @@ tracker.configure({
   gate: { rms: Number($('gate').value) },
   smoothing: Number($('smooth').value),
 });
+try {
+  const saved = localStorage.getItem(BACKEND_KEY);
+  if (saved && BACKEND_LABELS[saved]) setBackend(saved);
+} catch { /* private mode */ }
 loop();

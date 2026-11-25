@@ -6,7 +6,9 @@
 //   load()         optional, async: fetch what it needs (weights, a module).
 //                  Runs on the main thread, so URLs are relative to the page.
 //                  If it throws, the toggle shows disabled with `unavailable`.
-//   create(sr, assets)    build it at the analysis rate, given load()'s result
+//   create(sr, assets, dsp)    build it at the analysis rate, given load()'s
+//                  result and the processing back end (a WasmDsp, or null
+//                  for plain JavaScript)
 //   setSmoothing(engine, k)    optional: apply the "Formant smoothing" slider
 //   ownAudio       true for engines with async start(mediaStream)/stop()
 //
@@ -17,6 +19,7 @@
 // the latest finished estimate, so calling it there costs nothing.
 
 import { LpcEngine } from './lpc.js';
+import { WasmLpcEngine } from './wasm.js';
 import { MfccEngine } from './readout.js';
 import { MFCC_DEFAULTS } from '../mfcc.js';
 
@@ -25,7 +28,7 @@ export const ENGINES = [
     name: 'lpc',
     label: 'LPC',
     defaultOn: true,
-    create: (sr) => new LpcEngine(sr),
+    create: (sr, assets, dsp) => (dsp ? new WasmLpcEngine(sr, dsp) : new LpcEngine(sr)),
     setSmoothing: (engine, k) => { engine.smoothing = k; },
   },
   {
